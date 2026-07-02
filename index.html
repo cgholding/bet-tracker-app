@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Duplo Green Tracker</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">DG</div>
+          <div>
+            <strong>Duplo Green</strong>
+            <span>Bet365 Tracker</span>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <button class="nav-item active" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" data-view="bets">Apostas</button>
+          <button class="nav-item" data-view="balances">Saldo do Dia</button>
+          <button class="nav-item" data-view="config">Config</button>
+        </nav>
+
+        <button class="primary full" id="quickAddBet">Nova aposta</button>
+
+        <div class="sidebar-note">
+          <strong>Regra-base</strong>
+          <p>Over com Substituição+ e under na mesma linha. Cashout na troca quando o cenário pedir.</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Controle operacional</p>
+            <h1 id="pageTitle">Dashboard</h1>
+          </div>
+          <div class="top-actions">
+            <label class="date-filter">
+              Data
+              <input type="date" id="globalDate" />
+            </label>
+            <button class="ghost" id="clearDate">Ver tudo</button>
+          </div>
+        </header>
+
+        <section class="view active" id="view-dashboard"></section>
+        <section class="view" id="view-bets"></section>
+        <section class="view" id="view-balances"></section>
+        <section class="view" id="view-config"></section>
+      </main>
+    </div>
+
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+    <aside class="drawer" id="betDrawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">Registro</p>
+          <h2 id="drawerTitle">Nova aposta</h2>
+        </div>
+        <button class="icon-btn" id="closeDrawer" title="Fechar">X</button>
+      </div>
+      <form id="betForm" class="form-grid">
+        <input type="hidden" id="betId" />
+
+        <label>Data<input type="date" id="betDate" required /></label>
+        <label>Jogo<input id="betGame" placeholder="Espanha x Austria" required /></label>
+        <label>Jogador<input id="betPlayer" placeholder="Dani Olmo" required /></label>
+        <label>Time<input id="betTeam" placeholder="Espanha" /></label>
+
+        <label>Linha<input id="betLine" type="number" step="0.5" placeholder="2.5" required /></label>
+        <label>Mercado
+          <select id="betMarket">
+            <option>Chutes</option>
+            <option>Chutes ao Gol</option>
+            <option>Outro</option>
+          </select>
+        </label>
+        <label>Tipo
+          <select id="betType">
+            <option>Normal</option>
+            <option>Over Protegido</option>
+            <option>Cash Only</option>
+            <option>Live</option>
+            <option>Pré-jogo</option>
+            <option>Só Cash</option>
+          </select>
+        </label>
+
+        <label>Conta Over<select id="betAccountOver"></select></label>
+        <label>Conta Under<select id="betAccountUnder"></select></label>
+
+        <label>Odd Over<input id="betOddOver" type="number" step="0.01" placeholder="2.10" required /></label>
+        <label>Odd Under<input id="betOddUnder" type="number" step="0.01" placeholder="1.66" required /></label>
+        <label>Stake Over<input id="betStakeOver" type="number" step="0.01" placeholder="883" required /></label>
+        <label>Stake Under<input id="betStakeUnder" type="number" step="0.01" placeholder="1117" required /></label>
+
+        <label>Resultado Over
+          <select id="betResultOver">
+            <option>Aberta</option>
+            <option>Ganhou</option>
+            <option>Perdeu</option>
+            <option>Cashout</option>
+            <option>Anulada</option>
+          </select>
+        </label>
+        <label>Resultado Under
+          <select id="betResultUnder">
+            <option>Aberta</option>
+            <option>Ganhou</option>
+            <option>Perdeu</option>
+            <option>Anulada</option>
+          </select>
+        </label>
+        <label>Cashout Over<input id="betCashoutOver" type="number" step="0.01" placeholder="0" /></label>
+        <label>Min. Sub<input id="betSubMinute" type="number" step="1" placeholder="67" /></label>
+
+        <label>Chutes Titular<input id="betStarterShots" type="number" step="1" placeholder="2" /></label>
+        <label>Substituto<input id="betSubstitute" placeholder="Nome do substituto" /></label>
+        <label>Chutes Sub<input id="betSubShots" type="number" step="1" placeholder="1" /></label>
+        <label class="wide">Observações<textarea id="betNotes" rows="3" placeholder="Saiu cedo, cash bom, substituto chutou..."></textarea></label>
+
+        <div class="drawer-preview" id="betPreview"></div>
+
+        <div class="drawer-actions">
+          <button type="button" class="ghost danger" id="deleteBet">Excluir</button>
+          <button type="submit" class="primary">Salvar aposta</button>
+        </div>
+      </form>
+    </aside>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
