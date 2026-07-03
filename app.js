@@ -7,12 +7,17 @@ const DEFAULT_STATE = {
     accountA: "Conta A",
     accountB: "Conta B",
     accountOther: "Outra",
+    supabaseUrl: "",
+    supabaseAnonKey: "",
+    supabaseTable: "dg_tracker_snapshots",
+    supabaseSyncId: "",
   },
   bets: [],
   balances: [],
 };
 
 let state = loadState();
+let supabaseClient = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -31,11 +36,25 @@ const pctFmt = new Intl.NumberFormat("pt-BR", {
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(DEFAULT_STATE);
-    return { ...structuredClone(DEFAULT_STATE), ...JSON.parse(raw) };
+    if (!raw) return normalizeState();
+    return normalizeState(JSON.parse(raw));
   } catch {
-    return structuredClone(DEFAULT_STATE);
+    return normalizeState();
   }
+}
+
+function normalizeState(input = {}) {
+  const base = structuredClone(DEFAULT_STATE);
+  return {
+    ...base,
+    ...input,
+    settings: {
+      ...base.settings,
+      ...(input.settings || {}),
+    },
+    bets: Array.isArray(input.bets) ? input.bets : [],
+    balances: Array.isArray(input.balances) ? input.balances : [],
+  };
 }
 
 function saveState() {
@@ -662,17 +681,48 @@ function renderBalanceCard(b) {
   `;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function supabaseSchemaSql() {
+  return `create table if not exists public.dg_tracker_snapshots (
+  id text primary key,
+  payload jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.dg_tracker_snapshots enable row level security;
+
+drop policy if exists "dg_tracker_snapshots_anon_all" on public.dg_tracker_snapshots;
+create policy "dg_tracker_snapshots_anon_all"
+on public.dg_tracker_snapshots
+for all
+to anon
+using (true)
+with check (true);`;
+}
+
 function renderConfig() {
   const root = $("#view-config");
+  const syncId = state.settings.supabaseSyncId || `dg-${uid()}`;
+  if (!state.settings.supabaseSyncId) {
+    state.settings.supabaseSyncId = syncId;
+    saveState();
+  }
   root.innerHTML = `
     <div class="config-grid">
       <div class="card config-card">
         <h2>Contas</h2>
         <p class="panel-subtitle">Nomes usados nos selects de over/under.</p>
         <form id="settingsForm">
-          <label>Conta A<input id="accountA" value="${state.settings.accountA || ""}" /></label>
-          <label>Conta B<input id="accountB" value="${state.settings.accountB || ""}" /></label>
-          <label>Outra<input id="accountOther" value="${state.settings.accountOther || ""}" /></label>
+          <label>Conta A<input id="accountA" value="${escapeHtml(state.settings.accountA || "")}" /></label>
+          <label>Conta B<input id="accountB" value="${escapeHtml(state.settings.accountB || "")}" /></label>
+          <label>Outra<input id="accountOther" value="${escapeHtml(state.settings.accountOther || "")}" /></label>
           <button class="primary">Salvar config</button>
         </form>
       </div>
@@ -689,15 +739,21 @@ function renderConfig() {
       </div>
 
       <div class="card config-card">
-        <h2>Supabase depois</h2>
-        <p class="panel-subtitle">Por enquanto o app usa localStorage. Quando formos subir, trocamos o storage por Supabase Auth + tabelas de apostas/saldos.</p>
-        <table class="table-lite" style="margin-top:14px">
-          <tbody>
-            <tr><td>Frontend</td><td>Estático, pronto para Vercel</td></tr>
-            <tr><td>Banco atual</td><td>Local no navegador</td></tr>
-            <tr><td>Banco futuro</td><td>Supabase</td></tr>
-          </tbody>
-        </table>
+        <h2>Supabase</h2>
+        <p class="panel-subtitle">Sincronize o estado inteiro do tracker entre navegadores. Primeiro rode o SQL no Supabase.</p>
+        <form id="supabaseForm" class="grid" style="margin-top:14px">
+          <label>Project URL<input id="supabaseUrl" placeholder="https://xxxx.supabase.co" value="${escapeHtml(state.settings.supabaseUrl)}" /></label>
+          <label>Anon public key<input id="supabaseAnonKey" type="password" placeholder="eyJ..." value="${escapeHtml(state.settings.supabaseAnonKey)}" /></label>
+          <label>Tabela<input id="supabaseTable" value="${escapeHtml(state.settings.supabaseTable)}" /></label>
+          <label>Sync ID<input id="supabaseSyncId" value="${escapeHtml(syncId)}" /></label>
+          <button class="primary">Salvar Supabase</button>
+        </form>
+        <div class="grid" style="margin-top:14px">
+          <button class="ghost" id="pushSupabase">Enviar dados para Supabase</button>
+          <button class="ghost" id="pullSupabase">Carregar dados do Supabase</button>
+          <label>SQL para criar tabela<textarea rows="10" readonly>${escapeHtml(supabaseSchemaSql())}</textarea></label>
+          <div class="sync-status" id="supabaseStatus">Status: ${supabaseConfigured() ? "configurado" : "aguardando URL e chave"}</div>
+        </div>
       </div>
     </div>
   `;
@@ -713,6 +769,109 @@ function renderConfig() {
   $("#exportData").addEventListener("click", exportData);
   $("#importData").addEventListener("click", importData);
   $("#resetData").addEventListener("click", resetData);
+  $("#supabaseForm").addEventListener("submit", saveSupabaseSettings);
+  $("#pushSupabase").addEventListener("click", pushSupabaseState);
+  $("#pullSupabase").addEventListener("click", pullSupabaseState);
+}
+
+function supabaseConfigured() {
+  return Boolean(
+    state.settings.supabaseUrl &&
+    state.settings.supabaseAnonKey &&
+    state.settings.supabaseTable &&
+    state.settings.supabaseSyncId
+  );
+}
+
+function setSupabaseStatus(message, tone = "") {
+  const el = $("#supabaseStatus");
+  if (!el) return;
+  el.textContent = `Status: ${message}`;
+  el.className = `sync-status ${tone}`;
+}
+
+function getSupabaseClient() {
+  if (!supabaseConfigured()) {
+    throw new Error("Configure URL, anon key, tabela e Sync ID do Supabase primeiro.");
+  }
+  if (!window.supabase?.createClient) {
+    throw new Error("Biblioteca do Supabase não carregou. Verifique a conexão e recarregue a página.");
+  }
+  if (
+    !supabaseClient ||
+    supabaseClient.__dgUrl !== state.settings.supabaseUrl ||
+    supabaseClient.__dgKey !== state.settings.supabaseAnonKey
+  ) {
+    supabaseClient = window.supabase.createClient(state.settings.supabaseUrl, state.settings.supabaseAnonKey);
+    supabaseClient.__dgUrl = state.settings.supabaseUrl;
+    supabaseClient.__dgKey = state.settings.supabaseAnonKey;
+  }
+  return supabaseClient;
+}
+
+function saveSupabaseSettings(event) {
+  event.preventDefault();
+  state.settings.supabaseUrl = $("#supabaseUrl").value.trim();
+  state.settings.supabaseAnonKey = $("#supabaseAnonKey").value.trim();
+  state.settings.supabaseTable = $("#supabaseTable").value.trim() || "dg_tracker_snapshots";
+  state.settings.supabaseSyncId = $("#supabaseSyncId").value.trim() || `dg-${uid()}`;
+  supabaseClient = null;
+  saveState();
+  render();
+}
+
+async function pushSupabaseState() {
+  try {
+    setSupabaseStatus("enviando dados...", "amber");
+    const client = getSupabaseClient();
+    const payload = normalizeState(state);
+    const { error } = await client
+      .from(state.settings.supabaseTable)
+      .upsert({
+        id: state.settings.supabaseSyncId,
+        payload,
+        updated_at: new Date().toISOString(),
+      });
+    if (error) throw error;
+    setSupabaseStatus("dados enviados para Supabase", "green");
+  } catch (error) {
+    setSupabaseStatus(error.message || "erro ao enviar", "red");
+  }
+}
+
+async function pullSupabaseState() {
+  try {
+    const ok = confirm("Carregar dados do Supabase e substituir os dados locais deste navegador?");
+    if (!ok) return;
+    setSupabaseStatus("carregando dados...", "amber");
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from(state.settings.supabaseTable)
+      .select("payload, updated_at")
+      .eq("id", state.settings.supabaseSyncId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data?.payload) {
+      setSupabaseStatus("nenhum snapshot encontrado para este Sync ID", "amber");
+      return;
+    }
+    const currentSupabaseSettings = {
+      supabaseUrl: state.settings.supabaseUrl,
+      supabaseAnonKey: state.settings.supabaseAnonKey,
+      supabaseTable: state.settings.supabaseTable,
+      supabaseSyncId: state.settings.supabaseSyncId,
+    };
+    state = normalizeState(data.payload);
+    state.settings = {
+      ...state.settings,
+      ...currentSupabaseSettings,
+    };
+    saveState();
+    render();
+    setSupabaseStatus(`dados carregados (${new Date(data.updated_at).toLocaleString("pt-BR")})`, "green");
+  } catch (error) {
+    setSupabaseStatus(error.message || "erro ao carregar", "red");
+  }
 }
 
 function populateAccountSelects() {
@@ -902,7 +1061,7 @@ function exportData() {
 function importData() {
   try {
     const parsed = JSON.parse($("#importJson").value);
-    state = { ...structuredClone(DEFAULT_STATE), ...parsed };
+    state = normalizeState(parsed);
     saveState();
     render();
     alert("Dados importados.");
@@ -914,7 +1073,7 @@ function importData() {
 function resetData() {
   const ok = confirm("Apagar todas as apostas e saldos deste navegador?");
   if (!ok) return;
-  state = structuredClone(DEFAULT_STATE);
+  state = normalizeState();
   saveState();
   render();
 }

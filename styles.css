@@ -682,6 +682,34 @@ textarea:focus {
   color: var(--red-dark);
 }
 
+.sync-status {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sync-status.green {
+  border-color: #86efac;
+  background: var(--soft-green);
+  color: var(--green-dark);
+}
+
+.sync-status.red {
+  border-color: #fecaca;
+  background: var(--soft-red);
+  color: var(--red-dark);
+}
+
+.sync-status.amber {
+  border-color: #fde68a;
+  background: var(--soft-amber);
+  color: #92400e;
+}
+
 .dashboard-chart svg {
   width: 100%;
   height: auto;
