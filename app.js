@@ -74,6 +74,8 @@ function computeBet(bet) {
   const oddUnder = num(bet.oddUnder);
   const stakeOver = num(bet.stakeOver);
   const stakeUnder = num(bet.stakeUnder);
+  const liveCashoutOver = num(bet.liveCashoutOver);
+  const liveCashoutUnder = num(bet.liveCashoutUnder);
   const stakeTotal = stakeOver + stakeUnder;
   const doubleProfit = stakeOver * (oddOver - 1) + stakeUnder * (oddUnder - 1);
   const onlyUnder = stakeUnder * (oddUnder - 1) - stakeOver;
@@ -95,21 +97,35 @@ function computeBet(bet) {
   const underReturn = {
     Ganhou: stakeUnder * oddUnder,
     Perdeu: 0,
+    Cashout: num(bet.cashoutUnder),
     Anulada: stakeUnder,
     Aberta: 0,
   }[underResult] ?? 0;
 
-  const isOpen = overResult === "Aberta" || underResult === "Aberta";
+  const overOpen = overResult === "Aberta";
+  const underOpen = underResult === "Aberta";
+  const isOpen = overOpen || underOpen;
   const totalReturn = overReturn + underReturn;
   const profit = isOpen ? null : totalReturn - stakeTotal;
   const roi = profit === null || stakeTotal === 0 ? null : profit / stakeTotal;
+  const openStake = (overOpen ? stakeOver : 0) + (underOpen ? stakeUnder : 0);
+  const lockedReturn = (overOpen ? 0 : overReturn) + (underOpen ? 0 : underReturn);
+  const hasLiveOver = !overOpen || liveCashoutOver > 0;
+  const hasLiveUnder = !underOpen || liveCashoutUnder > 0;
+  const liveCashoutTotal = hasLiveOver && hasLiveUnder
+    ? lockedReturn + (overOpen ? liveCashoutOver : 0) + (underOpen ? liveCashoutUnder : 0)
+    : null;
+  const cashoutProfitNow = liveCashoutTotal === null ? null : liveCashoutTotal - stakeTotal;
+  const cashoutRoiNow = cashoutProfitNow === null || stakeTotal === 0 ? null : cashoutProfitNow / stakeTotal;
 
   let status = "Aberta";
   if (!isOpen) {
     if (overResult === "Anulada" && underResult === "Anulada") status = "Anulada";
     else if (overResult === "Ganhou" && underResult === "Ganhou") status = "Duplo Green";
     else if (overResult === "Cashout" && underResult === "Ganhou") status = "Cashout + Under";
+    else if (overResult === "Ganhou" && underResult === "Cashout") status = "Cashout + Over";
     else if (overResult === "Cashout") status = "Cashout";
+    else if (underResult === "Cashout") status = "Cashout";
     else if (overResult === "Ganhou" && underResult === "Perdeu") status = "Só Over";
     else if (overResult === "Perdeu" && underResult === "Ganhou") status = "Só Under";
     else if (profit < 0) status = "Red";
@@ -125,6 +141,11 @@ function computeBet(bet) {
     minDoubleRate,
     overReturn,
     underReturn,
+    liveCashoutTotal,
+    cashoutProfitNow,
+    cashoutRoiNow,
+    openStake,
+    lockedReturn,
     totalReturn,
     profit,
     roi,
@@ -146,11 +167,17 @@ function closedBets(bets = filteredBets()) {
 function totalsForDate(date) {
   const bets = state.bets.filter((b) => b.date === date);
   const closed = closedBets(bets);
+  const openBets = bets.filter((b) => computeBet(b).isOpen);
+  const openWithCashout = openBets.filter((b) => computeBet(b).cashoutProfitNow !== null);
   return {
     bets,
     closed,
     stake: closed.reduce((sum, b) => sum + computeBet(b).stakeTotal, 0),
     profit: closed.reduce((sum, b) => sum + (computeBet(b).profit || 0), 0),
+    openStake: openBets.reduce((sum, b) => sum + computeBet(b).openStake, 0),
+    liveCashout: openWithCashout.reduce((sum, b) => sum + (computeBet(b).liveCashoutTotal || 0), 0),
+    liveCashoutProfit: openWithCashout.reduce((sum, b) => sum + (computeBet(b).cashoutProfitNow || 0), 0),
+    openWithCashout: openWithCashout.length,
     entries: bets.length,
     doubleGreens: bets.filter((b) => computeBet(b).status === "Duplo Green").length,
     cashouts: bets.filter((b) => computeBet(b).status.includes("Cashout")).length,
@@ -199,19 +226,26 @@ function renderDashboard() {
   const doubleGreens = bets.filter((b) => computeBet(b).status === "Duplo Green").length;
   const cashouts = bets.filter((b) => computeBet(b).status.includes("Cashout")).length;
   const reds = closed.filter((b) => (computeBet(b).profit || 0) < 0).length;
-  const open = bets.filter((b) => computeBet(b).isOpen).length;
+  const openBets = bets.filter((b) => computeBet(b).isOpen);
+  const open = openBets.length;
+  const openStake = openBets.reduce((sum, b) => sum + computeBet(b).openStake, 0);
+  const cashoutKnown = openBets.filter((b) => computeBet(b).cashoutProfitNow !== null);
+  const liveCashout = cashoutKnown.reduce((sum, b) => sum + (computeBet(b).liveCashoutTotal || 0), 0);
+  const liveCashoutProfit = cashoutKnown.reduce((sum, b) => sum + (computeBet(b).cashoutProfitNow || 0), 0);
   const selectedBalance = state.balances.find((d) => d.date === state.selectedDate);
 
   root.innerHTML = `
     <div class="grid kpi-grid">
       ${kpi("Stake fechado", money(stake), `${closed.length} apostas fechadas`, "blue")}
       ${kpi("Lucro real", money(profit), "Somente entradas fechadas", profit < 0 ? "red" : "green")}
+      ${kpi("Dinheiro em jogo", money(openStake), `${open} apostas abertas`, "amber")}
+      ${kpi("P/L se cashar", cashoutKnown.length ? money(liveCashoutProfit) : "-", `${cashoutKnown.length}/${open} abertas com cashout`, liveCashoutProfit < 0 ? "red" : "green")}
+      ${kpi("Cashout atual", cashoutKnown.length ? money(liveCashout) : "-", "Retorno se encerrar abertas", "blue")}
       ${kpi("ROI", pct(roi), "Lucro / stake fechado", "amber")}
       ${kpi("Entradas", bets.length, `${open} em aberto`, "")}
       ${kpi("Duplo Green", doubleGreens, "Over + under verdes", "green")}
       ${kpi("Cashouts", cashouts, "Cash ou cash + under", "blue")}
       ${kpi("Reds", reds, "Entradas negativas", "red")}
-      ${kpi("Em aberto", open, "Ainda sem resultado final", "amber")}
     </div>
 
     <div class="section-grid">
@@ -261,6 +295,16 @@ function renderDashboard() {
     <div class="card panel" style="margin-top:16px">
       <div class="panel-head">
         <div>
+          <h2>Contas</h2>
+          <p class="panel-subtitle">Stake, lucro fechado e exposição aberta por conta.</p>
+        </div>
+      </div>
+      ${renderAccountBreakdown(bets)}
+    </div>
+
+    <div class="card panel" style="margin-top:16px">
+      <div class="panel-head">
+        <div>
           <h2>Últimas operações</h2>
           <p class="panel-subtitle">Atalho para revisar as entradas mais recentes.</p>
         </div>
@@ -296,7 +340,8 @@ function renderBalanceSummary(balance) {
   const finalBank = num(balance.final);
   const resultDay = finalBank + withdrawals - initial - deposits;
   const roi = initial + deposits ? resultDay / (initial + deposits) : 0;
-  const betsResult = totalsForDate(balance.date).profit;
+  const dayTotals = totalsForDate(balance.date);
+  const betsResult = dayTotals.profit;
   return `
     <div class="mini-grid">
       ${mini("Banca inicial", money(initial))}
@@ -305,6 +350,8 @@ function renderBalanceSummary(balance) {
       ${mini("ROI dia", pct(roi))}
       ${mini("Lucro apostas", money(betsResult))}
       ${mini("Diferença banca x apostas", money(resultDay - betsResult))}
+      ${mini("Em aberto", money(dayTotals.openStake))}
+      ${mini("Cashout atual", dayTotals.openWithCashout ? money(dayTotals.liveCashout) : "-")}
     </div>
   `;
 }
@@ -347,7 +394,7 @@ function renderDailyChart() {
 }
 
 function renderResultBars(bets) {
-  const labels = ["Duplo Green", "Cashout + Under", "Cashout", "Só Under", "Só Over", "Red", "Aberta"];
+  const labels = ["Duplo Green", "Cashout + Under", "Cashout + Over", "Cashout", "Só Under", "Só Over", "Red", "Aberta"];
   const counts = labels.map((label) => ({
     label,
     count: bets.filter((b) => computeBet(b).status === label).length,
@@ -388,6 +435,70 @@ function renderPlayerRanking(closed) {
   `;
 }
 
+function renderAccountBreakdown(bets) {
+  const map = new Map(accounts().map((name) => [name, {
+    name,
+    closedStake: 0,
+    closedReturn: 0,
+    openStake: 0,
+    liveCashout: 0,
+    liveCount: 0,
+  }]));
+
+  function addSide(account, stake, result, returnValue, liveCashout) {
+    if (!account) return;
+    const row = map.get(account) || {
+      name: account,
+      closedStake: 0,
+      closedReturn: 0,
+      openStake: 0,
+      liveCashout: 0,
+      liveCount: 0,
+    };
+    if (result === "Aberta") {
+      row.openStake += stake;
+      if (liveCashout > 0) {
+        row.liveCashout += liveCashout;
+        row.liveCount += 1;
+      }
+    } else {
+      row.closedStake += stake;
+      row.closedReturn += returnValue;
+    }
+    map.set(account, row);
+  }
+
+  bets.forEach((b) => {
+    const c = computeBet(b);
+    addSide(b.accountOver, num(b.stakeOver), b.resultOver || "Aberta", c.overReturn, num(b.liveCashoutOver));
+    addSide(b.accountUnder, num(b.stakeUnder), b.resultUnder || "Aberta", c.underReturn, num(b.liveCashoutUnder));
+  });
+
+  const rows = [...map.values()].filter((r) => r.closedStake || r.closedReturn || r.openStake || r.liveCashout);
+  if (!rows.length) return `<div class="chart-empty">Sem movimentação nas contas ainda.</div>`;
+
+  return `
+    <table class="table-lite">
+      <thead><tr><th>Conta</th><th>Stake fechado</th><th>Retorno fechado</th><th>Lucro fechado</th><th>Em aberto</th><th>Cashout atual</th></tr></thead>
+      <tbody>
+        ${rows.map((r) => {
+          const profit = r.closedReturn - r.closedStake;
+          return `
+            <tr>
+              <td>${r.name}</td>
+              <td>${money(r.closedStake)}</td>
+              <td>${money(r.closedReturn)}</td>
+              <td class="${profit >= 0 ? "good" : "bad"}">${money(profit)}</td>
+              <td>${money(r.openStake)}</td>
+              <td>${r.liveCount ? money(r.liveCashout) : "-"}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
 function renderLatestBets() {
   const latest = [...state.bets].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).slice(0, 5);
   if (!latest.length) return `<div class="empty-state"><div><strong>Nenhuma aposta cadastrada</strong><p>Clique em Nova aposta para registrar a primeira operação.</p></div></div>`;
@@ -417,6 +528,7 @@ function renderBets() {
             <option>Aberta</option>
             <option>Duplo Green</option>
             <option>Cashout + Under</option>
+            <option>Cashout + Over</option>
             <option>Cashout</option>
             <option>Red</option>
             <option>Só Under</option>
@@ -477,6 +589,9 @@ function renderBetCard(b) {
         ${mini("Tipo", b.type || "-")}
         ${mini("Stake", money(c.stakeTotal))}
         ${mini("Lucro Real", c.profit === null ? "-" : `<span class="${c.profit >= 0 ? "good" : "bad"}">${money(c.profit)}</span>`)}
+        ${mini("Em aberto", money(c.openStake))}
+        ${mini("Cash agora", c.liveCashoutTotal === null ? "-" : money(c.liveCashoutTotal))}
+        ${mini("P/L cash", c.cashoutProfitNow === null ? "-" : `<span class="${c.cashoutProfitNow >= 0 ? "good" : "bad"}">${money(c.cashoutProfitNow)}</span>`)}
         ${mini("DG Potencial", money(c.doubleProfit))}
         ${mini("Prob. Min.", pct(c.minDoubleRate))}
       </div>
@@ -629,6 +744,9 @@ function openBetDrawer(id) {
   $("#betResultOver").value = bet?.resultOver || "Aberta";
   $("#betResultUnder").value = bet?.resultUnder || "Aberta";
   $("#betCashoutOver").value = bet?.cashoutOver || "";
+  $("#betCashoutUnder").value = bet?.cashoutUnder || "";
+  $("#betLiveCashoutOver").value = bet?.liveCashoutOver || "";
+  $("#betLiveCashoutUnder").value = bet?.liveCashoutUnder || "";
   $("#betSubMinute").value = bet?.subMinute || "";
   $("#betStarterShots").value = bet?.starterShots || "";
   $("#betSubstitute").value = bet?.substitute || "";
@@ -668,6 +786,9 @@ function betFromForm() {
     resultOver: $("#betResultOver").value,
     resultUnder: $("#betResultUnder").value,
     cashoutOver: $("#betCashoutOver").value,
+    cashoutUnder: $("#betCashoutUnder").value,
+    liveCashoutOver: $("#betLiveCashoutOver").value,
+    liveCashoutUnder: $("#betLiveCashoutUnder").value,
     subMinute: $("#betSubMinute").value,
     starterShots: $("#betStarterShots").value,
     substitute: $("#betSubstitute").value.trim(),
@@ -685,6 +806,9 @@ function updateBetPreview() {
       ${mini("DG potencial", money(c.doubleProfit))}
       ${mini("Só under", money(c.onlyUnder))}
       ${mini("Só over", money(c.onlyOver))}
+      ${mini("Em aberto", money(c.openStake))}
+      ${mini("Cashout atual", c.liveCashoutTotal === null ? "Sem dados" : money(c.liveCashoutTotal))}
+      ${mini("P/L cash agora", c.cashoutProfitNow === null ? "Sem dados" : `<span class="${c.cashoutProfitNow >= 0 ? "good" : "bad"}">${money(c.cashoutProfitNow)}</span>`)}
       ${mini("Prob. DG min.", pct(c.minDoubleRate))}
       ${mini("Lucro real", c.profit === null ? "Em aberto" : money(c.profit))}
     </div>
