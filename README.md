@@ -28,7 +28,7 @@ http://127.0.0.1:8787
 
 1. Crie um projeto no Supabase.
 2. Rode o SQL de `supabase/schema.sql` no SQL Editor.
-3. No app, abra `Config` e preencha `Project URL`, `Anon public key`, `Tabela` e `Sync ID`.
+3. O app já está configurado com o projeto `maenndpjseglihhmvils` e o Sync ID `bet-tracker-main`.
 4. Use `Enviar dados para Supabase` para salvar o snapshot atual.
 5. Use `Carregar dados do Supabase` em outro navegador/dispositivo para recuperar o mesmo snapshot.
 

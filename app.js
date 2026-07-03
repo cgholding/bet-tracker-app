@@ -7,10 +7,10 @@ const DEFAULT_STATE = {
     accountA: "Conta A",
     accountB: "Conta B",
     accountOther: "Outra",
-    supabaseUrl: "",
-    supabaseAnonKey: "",
+    supabaseUrl: "https://maenndpjseglihhmvils.supabase.co",
+    supabaseAnonKey: "sb_publishable__RagIfBzfpKO04LLO10sAg_cW-Ufla1",
     supabaseTable: "dg_tracker_snapshots",
-    supabaseSyncId: "",
+    supabaseSyncId: "bet-tracker-main",
   },
   bets: [],
   balances: [],
@@ -45,16 +45,29 @@ function loadState() {
 
 function normalizeState(input = {}) {
   const base = structuredClone(DEFAULT_STATE);
+  const inputSettings = input.settings || {};
+  const settings = {
+    ...base.settings,
+    ...inputSettings,
+  };
+  settings.supabaseUrl = normalizeSupabaseUrl(settings.supabaseUrl || base.settings.supabaseUrl);
+  settings.supabaseAnonKey = settings.supabaseAnonKey || base.settings.supabaseAnonKey;
+  settings.supabaseTable = settings.supabaseTable || base.settings.supabaseTable;
+  settings.supabaseSyncId = settings.supabaseSyncId || base.settings.supabaseSyncId;
   return {
     ...base,
     ...input,
-    settings: {
-      ...base.settings,
-      ...(input.settings || {}),
-    },
+    settings,
     bets: Array.isArray(input.bets) ? input.bets : [],
     balances: Array.isArray(input.balances) ? input.balances : [],
   };
+}
+
+function normalizeSupabaseUrl(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\/rest\/v1\/?$/i, "")
+    .replace(/\/+$/g, "");
 }
 
 function saveState() {
@@ -811,7 +824,7 @@ function getSupabaseClient() {
 
 function saveSupabaseSettings(event) {
   event.preventDefault();
-  state.settings.supabaseUrl = $("#supabaseUrl").value.trim();
+  state.settings.supabaseUrl = normalizeSupabaseUrl($("#supabaseUrl").value);
   state.settings.supabaseAnonKey = $("#supabaseAnonKey").value.trim();
   state.settings.supabaseTable = $("#supabaseTable").value.trim() || "dg_tracker_snapshots";
   state.settings.supabaseSyncId = $("#supabaseSyncId").value.trim() || `dg-${uid()}`;
