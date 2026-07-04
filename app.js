@@ -1,4 +1,5 @@
 const STORAGE_KEY = "dg-tracker-state-v1";
+const USER_SNAPSHOTS_TABLE = "dg_tracker_user_snapshots";
 
 const DEFAULT_STATE = {
   activeView: "dashboard",
@@ -9,8 +10,8 @@ const DEFAULT_STATE = {
     accountOther: "Outra",
     supabaseUrl: "https://maenndpjseglihhmvils.supabase.co",
     supabaseAnonKey: "sb_publishable__RagIfBzfpKO04LLO10sAg_cW-Ufla1",
-    supabaseTable: "dg_tracker_snapshots",
-    supabaseSyncId: "bet-tracker-main",
+    supabaseTable: USER_SNAPSHOTS_TABLE,
+    supabaseSyncId: "",
   },
   bets: [],
   balances: [],
@@ -18,6 +19,10 @@ const DEFAULT_STATE = {
 
 let state = loadState();
 let supabaseClient = null;
+let currentUser = null;
+let authReady = false;
+let cloudSaveTimer = null;
+let restoringFromCloud = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -33,14 +38,38 @@ const pctFmt = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 1,
 });
 
-function loadState() {
+function storageKeyForUser(userId) {
+  return `${STORAGE_KEY}:${userId}`;
+}
+
+function currentStorageKey() {
+  return currentUser ? storageKeyForUser(currentUser.id) : STORAGE_KEY;
+}
+
+function hasStoredState(key) {
+  return Boolean(localStorage.getItem(key));
+}
+
+function hasTrackerData(candidate) {
+  return Boolean(candidate?.bets?.length || candidate?.balances?.length);
+}
+
+function loadState(key = STORAGE_KEY) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return normalizeState();
     return normalizeState(JSON.parse(raw));
   } catch {
     return normalizeState();
   }
+}
+
+function loadStateForUser(user) {
+  const userKey = storageKeyForUser(user.id);
+  if (hasStoredState(userKey)) return loadState(userKey);
+  const legacy = loadState(STORAGE_KEY);
+  if (hasTrackerData(legacy)) return legacy;
+  return normalizeState();
 }
 
 function normalizeState(input = {}) {
@@ -52,8 +81,8 @@ function normalizeState(input = {}) {
   };
   settings.supabaseUrl = normalizeSupabaseUrl(settings.supabaseUrl || base.settings.supabaseUrl);
   settings.supabaseAnonKey = settings.supabaseAnonKey || base.settings.supabaseAnonKey;
-  settings.supabaseTable = settings.supabaseTable || base.settings.supabaseTable;
-  settings.supabaseSyncId = settings.supabaseSyncId || base.settings.supabaseSyncId;
+  settings.supabaseTable = USER_SNAPSHOTS_TABLE;
+  settings.supabaseSyncId = "";
   return {
     ...base,
     ...input,
@@ -70,8 +99,12 @@ function normalizeSupabaseUrl(value) {
     .replace(/\/+$/g, "");
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function saveState(options = {}) {
+  const { cloud = true } = options;
+  localStorage.setItem(currentStorageKey(), JSON.stringify(state));
+  if (cloud && currentUser && authReady && !restoringFromCloud) {
+    queueCloudSave();
+  }
 }
 
 function uid() {
@@ -225,18 +258,23 @@ function classForStatus(status) {
   return "";
 }
 
-function setView(view) {
-  state.activeView = view;
-  saveState();
-  $$(".nav-item").forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
+function activateView(view) {
+  const safeView = ["dashboard", "bets", "balances", "config"].includes(view) ? view : "dashboard";
+  $$(".nav-item").forEach((btn) => btn.classList.toggle("active", btn.dataset.view === safeView));
   $$(".view").forEach((el) => el.classList.remove("active"));
-  $(`#view-${view}`).classList.add("active");
+  $(`#view-${safeView}`).classList.add("active");
   $("#pageTitle").textContent = {
     dashboard: "Dashboard",
     bets: "Apostas",
     balances: "Saldo do Dia",
     config: "Config",
-  }[view];
+  }[safeView];
+}
+
+function setView(view) {
+  state.activeView = ["dashboard", "bets", "balances", "config"].includes(view) ? view : "dashboard";
+  saveState();
+  activateView(state.activeView);
   render();
 }
 
@@ -703,30 +741,56 @@ function escapeHtml(value) {
 }
 
 function supabaseSchemaSql() {
-  return `create table if not exists public.dg_tracker_snapshots (
-  id text primary key,
+  return `create table if not exists public.dg_tracker_user_snapshots (
+  user_id uuid primary key references auth.users(id) on delete cascade,
   payload jsonb not null,
   updated_at timestamptz not null default now()
 );
 
-alter table public.dg_tracker_snapshots enable row level security;
+alter table public.dg_tracker_user_snapshots enable row level security;
 
-drop policy if exists "dg_tracker_snapshots_anon_all" on public.dg_tracker_snapshots;
-create policy "dg_tracker_snapshots_anon_all"
-on public.dg_tracker_snapshots
-for all
-to anon
-using (true)
-with check (true);`;
+drop policy if exists "dg_user_snapshots_select_own" on public.dg_tracker_user_snapshots;
+drop policy if exists "dg_user_snapshots_insert_own" on public.dg_tracker_user_snapshots;
+drop policy if exists "dg_user_snapshots_update_own" on public.dg_tracker_user_snapshots;
+drop policy if exists "dg_user_snapshots_delete_own" on public.dg_tracker_user_snapshots;
+
+create policy "dg_user_snapshots_select_own"
+on public.dg_tracker_user_snapshots
+for select
+to authenticated
+using (auth.uid() = user_id);
+
+create policy "dg_user_snapshots_insert_own"
+on public.dg_tracker_user_snapshots
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "dg_user_snapshots_update_own"
+on public.dg_tracker_user_snapshots
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "dg_user_snapshots_delete_own"
+on public.dg_tracker_user_snapshots
+for delete
+to authenticated
+using (auth.uid() = user_id);
+
+do $$
+begin
+  if to_regclass('public.dg_tracker_snapshots') is not null then
+    execute 'drop policy if exists "dg_tracker_snapshots_anon_all" on public.dg_tracker_snapshots';
+  end if;
+end $$;
+
+select pg_notify('pgrst', 'reload schema');`;
 }
 
 function renderConfig() {
   const root = $("#view-config");
-  const syncId = state.settings.supabaseSyncId || `dg-${uid()}`;
-  if (!state.settings.supabaseSyncId) {
-    state.settings.supabaseSyncId = syncId;
-    saveState();
-  }
   root.innerHTML = `
     <div class="config-grid">
       <div class="card config-card">
@@ -752,19 +816,14 @@ function renderConfig() {
       </div>
 
       <div class="card config-card">
-        <h2>Supabase</h2>
-        <p class="panel-subtitle">Sincronize o estado inteiro do tracker entre navegadores. Primeiro rode o SQL no Supabase.</p>
-        <form id="supabaseForm" class="grid" style="margin-top:14px">
-          <label>Project URL<input id="supabaseUrl" placeholder="https://xxxx.supabase.co" value="${escapeHtml(state.settings.supabaseUrl)}" /></label>
-          <label>Anon public key<input id="supabaseAnonKey" type="password" placeholder="eyJ..." value="${escapeHtml(state.settings.supabaseAnonKey)}" /></label>
-          <label>Tabela<input id="supabaseTable" value="${escapeHtml(state.settings.supabaseTable)}" /></label>
-          <label>Sync ID<input id="supabaseSyncId" value="${escapeHtml(syncId)}" /></label>
-          <button class="primary">Salvar Supabase</button>
-        </form>
+        <h2>Conta e nuvem</h2>
+        <p class="panel-subtitle">${escapeHtml(currentUser?.email || "Nenhuma conta conectada.")}</p>
         <div class="grid" style="margin-top:14px">
-          <button class="ghost" id="pushSupabase">Enviar dados para Supabase</button>
-          <button class="ghost" id="pullSupabase">Carregar dados do Supabase</button>
-          <label>SQL para criar tabela<textarea rows="10" readonly>${escapeHtml(supabaseSchemaSql())}</textarea></label>
+          <button class="ghost" id="pushSupabase">Salvar agora na nuvem</button>
+          <button class="ghost" id="pullSupabase">Carregar minha nuvem</button>
+          <button class="danger-soft" id="logoutFromConfig">Sair da conta</button>
+          <label>Tabela<input readonly value="${escapeHtml(USER_SNAPSHOTS_TABLE)}" /></label>
+          <label>SQL de contas<textarea rows="18" readonly>${escapeHtml(supabaseSchemaSql())}</textarea></label>
           <div class="sync-status" id="supabaseStatus">Status: ${supabaseConfigured() ? "configurado" : "aguardando URL e chave"}</div>
         </div>
       </div>
@@ -782,17 +841,15 @@ function renderConfig() {
   $("#exportData").addEventListener("click", exportData);
   $("#importData").addEventListener("click", importData);
   $("#resetData").addEventListener("click", resetData);
-  $("#supabaseForm").addEventListener("submit", saveSupabaseSettings);
   $("#pushSupabase").addEventListener("click", pushSupabaseState);
   $("#pullSupabase").addEventListener("click", pullSupabaseState);
+  $("#logoutFromConfig").addEventListener("click", signOut);
 }
 
 function supabaseConfigured() {
   return Boolean(
     state.settings.supabaseUrl &&
-    state.settings.supabaseAnonKey &&
-    state.settings.supabaseTable &&
-    state.settings.supabaseSyncId
+    state.settings.supabaseAnonKey
   );
 }
 
@@ -822,69 +879,189 @@ function getSupabaseClient() {
   return supabaseClient;
 }
 
-function saveSupabaseSettings(event) {
-  event.preventDefault();
-  state.settings.supabaseUrl = normalizeSupabaseUrl($("#supabaseUrl").value);
-  state.settings.supabaseAnonKey = $("#supabaseAnonKey").value.trim();
-  state.settings.supabaseTable = $("#supabaseTable").value.trim() || "dg_tracker_snapshots";
-  state.settings.supabaseSyncId = $("#supabaseSyncId").value.trim() || `dg-${uid()}`;
-  supabaseClient = null;
-  saveState();
-  render();
+function queueCloudSave() {
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(() => {
+    pushSupabaseState({ silent: true });
+  }, 900);
 }
 
-async function pushSupabaseState() {
+async function pushSupabaseState(options = {}) {
+  const { silent = false } = options;
   try {
-    setSupabaseStatus("enviando dados...", "amber");
+    if (!currentUser) throw new Error("Entre na sua conta primeiro.");
+    if (!silent) setSupabaseStatus("salvando na nuvem...", "amber");
     const client = getSupabaseClient();
     const payload = normalizeState(state);
     const { error } = await client
-      .from(state.settings.supabaseTable)
+      .from(USER_SNAPSHOTS_TABLE)
       .upsert({
-        id: state.settings.supabaseSyncId,
+        user_id: currentUser.id,
         payload,
         updated_at: new Date().toISOString(),
-      });
+      }, { onConflict: "user_id" });
     if (error) throw error;
-    setSupabaseStatus("dados enviados para Supabase", "green");
+    if (!silent) setSupabaseStatus("dados salvos na nuvem", "green");
   } catch (error) {
-    setSupabaseStatus(error.message || "erro ao enviar", "red");
+    if (silent) console.warn("Falha no autosave Supabase:", error);
+    else setSupabaseStatus(error.message || "erro ao salvar", "red");
   }
 }
 
-async function pullSupabaseState() {
+async function pullSupabaseState(options = {}) {
+  const { confirmFirst = true, silent = false } = options;
   try {
-    const ok = confirm("Carregar dados do Supabase e substituir os dados locais deste navegador?");
-    if (!ok) return;
-    setSupabaseStatus("carregando dados...", "amber");
+    if (!currentUser) throw new Error("Entre na sua conta primeiro.");
+    const ok = !confirmFirst || confirm("Carregar dados da nuvem e substituir os dados locais deste navegador?");
+    if (!ok) return false;
+    if (!silent) setSupabaseStatus("carregando dados...", "amber");
     const client = getSupabaseClient();
     const { data, error } = await client
-      .from(state.settings.supabaseTable)
+      .from(USER_SNAPSHOTS_TABLE)
       .select("payload, updated_at")
-      .eq("id", state.settings.supabaseSyncId)
+      .eq("user_id", currentUser.id)
       .maybeSingle();
     if (error) throw error;
     if (!data?.payload) {
-      setSupabaseStatus("nenhum snapshot encontrado para este Sync ID", "amber");
-      return;
+      if (!silent) setSupabaseStatus("nenhum backup encontrado para esta conta", "amber");
+      return false;
     }
     const currentSupabaseSettings = {
       supabaseUrl: state.settings.supabaseUrl,
       supabaseAnonKey: state.settings.supabaseAnonKey,
-      supabaseTable: state.settings.supabaseTable,
-      supabaseSyncId: state.settings.supabaseSyncId,
+      supabaseTable: USER_SNAPSHOTS_TABLE,
+      supabaseSyncId: "",
     };
+    restoringFromCloud = true;
     state = normalizeState(data.payload);
     state.settings = {
       ...state.settings,
       ...currentSupabaseSettings,
     };
-    saveState();
+    saveState({ cloud: false });
+    restoringFromCloud = false;
+    activateView(state.activeView || "dashboard");
     render();
-    setSupabaseStatus(`dados carregados (${new Date(data.updated_at).toLocaleString("pt-BR")})`, "green");
+    if (!silent) setSupabaseStatus(`dados carregados (${new Date(data.updated_at).toLocaleString("pt-BR")})`, "green");
+    return true;
   } catch (error) {
-    setSupabaseStatus(error.message || "erro ao carregar", "red");
+    restoringFromCloud = false;
+    if (!silent) setSupabaseStatus(error.message || "erro ao carregar", "red");
+    else console.warn("Falha ao carregar Supabase:", error);
+    return false;
   }
+}
+
+function setAuthStatus(message, tone = "") {
+  const el = $("#authStatus");
+  if (!el) return;
+  el.textContent = message;
+  el.className = `sync-status ${tone}`;
+}
+
+function showAuthScreen(show) {
+  $("#authScreen").hidden = !show;
+  $("#appShell").hidden = show;
+}
+
+function renderUserBadge() {
+  const email = currentUser?.email || "-";
+  $("#userEmail").textContent = email;
+}
+
+async function enterAuthenticatedApp(user) {
+  currentUser = user;
+  authReady = true;
+  state = loadStateForUser(user);
+  showAuthScreen(false);
+  renderUserBadge();
+  const loadedFromCloud = await pullSupabaseState({ confirmFirst: false, silent: true });
+  if (!loadedFromCloud) {
+    saveState({ cloud: false });
+    activateView(state.activeView || "dashboard");
+    render();
+    if (hasTrackerData(state)) {
+      pushSupabaseState({ silent: true });
+    }
+  }
+}
+
+function leaveAuthenticatedApp() {
+  currentUser = null;
+  authReady = false;
+  clearTimeout(cloudSaveTimer);
+  state = normalizeState();
+  showAuthScreen(true);
+  setAuthStatus("Entre para continuar.");
+}
+
+async function signIn(event) {
+  event.preventDefault();
+  try {
+    setAuthStatus("entrando...", "amber");
+    const client = getSupabaseClient();
+    const email = $("#authEmail").value.trim();
+    const password = $("#authPassword").value;
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (data?.user && data.user.id !== currentUser?.id) {
+      setAuthStatus("conta conectada", "green");
+      await enterAuthenticatedApp(data.user);
+    }
+  } catch (error) {
+    setAuthStatus(error.message || "erro ao entrar", "red");
+  }
+}
+
+async function createAccount() {
+  try {
+    setAuthStatus("criando conta...", "amber");
+    const client = getSupabaseClient();
+    const email = $("#authEmail").value.trim();
+    const password = $("#authPassword").value;
+    if (!email || password.length < 6) {
+      throw new Error("Preencha email e senha com pelo menos 6 caracteres.");
+    }
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+    if (data?.session?.user && data.session.user.id !== currentUser?.id) {
+      setAuthStatus("conta criada", "green");
+      await enterAuthenticatedApp(data.session.user);
+    } else {
+      setAuthStatus("conta criada. Confirme o email para entrar.", "amber");
+    }
+  } catch (error) {
+    setAuthStatus(error.message || "erro ao criar conta", "red");
+  }
+}
+
+async function resetPassword() {
+  try {
+    const email = $("#authEmail").value.trim();
+    if (!email) throw new Error("Digite o email primeiro.");
+    setAuthStatus("enviando recuperação...", "amber");
+    const client = getSupabaseClient();
+    const { error } = await client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (error) throw error;
+    setAuthStatus("email de recuperação enviado", "green");
+  } catch (error) {
+    setAuthStatus(error.message || "erro ao recuperar senha", "red");
+  }
+}
+
+async function signOut() {
+  const client = getSupabaseClient();
+  await pushSupabaseState({ silent: true });
+  await client.auth.signOut();
+  leaveAuthenticatedApp();
 }
 
 function populateAccountSelects() {
@@ -1091,7 +1268,7 @@ function resetData() {
   render();
 }
 
-function boot() {
+async function boot() {
   $("#globalDate").value = state.selectedDate || "";
   $("#globalDate").addEventListener("change", (event) => {
     state.selectedDate = event.target.value;
@@ -1109,10 +1286,32 @@ function boot() {
   $("#drawerBackdrop").addEventListener("click", closeBetDrawer);
   $("#betForm").addEventListener("submit", saveBet);
   $("#deleteBet").addEventListener("click", deleteCurrentBet);
+  $("#authForm").addEventListener("submit", signIn);
+  $("#createAccount").addEventListener("click", createAccount);
+  $("#resetPassword").addEventListener("click", resetPassword);
+  $("#logoutBtn").addEventListener("click", signOut);
   ["input", "change"].forEach((eventName) => {
     $("#betForm").addEventListener(eventName, updateBetPreview);
   });
-  setView(state.activeView || "dashboard");
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client.auth.getSession();
+    if (error) throw error;
+    client.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") leaveAuthenticatedApp();
+      if (event === "SIGNED_IN" && session?.user && session.user.id !== currentUser?.id) {
+        enterAuthenticatedApp(session.user);
+      }
+    });
+    if (data?.session?.user) {
+      await enterAuthenticatedApp(data.session.user);
+    } else {
+      leaveAuthenticatedApp();
+    }
+  } catch (error) {
+    showAuthScreen(true);
+    setAuthStatus(error.message || "erro ao iniciar login", "red");
+  }
 }
 
 boot();

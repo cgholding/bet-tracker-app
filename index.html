@@ -7,7 +7,28 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <section class="auth-screen" id="authScreen">
+      <div class="auth-card card">
+        <div class="brand auth-brand">
+          <div class="brand-mark">DG</div>
+          <div>
+            <strong>Duplo Green</strong>
+            <span>Bet365 Tracker</span>
+          </div>
+        </div>
+
+        <form id="authForm" class="auth-form">
+          <label>Email<input id="authEmail" type="email" autocomplete="email" required /></label>
+          <label>Senha<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required /></label>
+          <button class="primary full" type="submit">Entrar</button>
+          <button class="ghost full" type="button" id="createAccount">Criar conta</button>
+          <button class="text-btn" type="button" id="resetPassword">Esqueci minha senha</button>
+          <div class="sync-status" id="authStatus">Entre para continuar.</div>
+        </form>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">DG</div>
@@ -39,6 +60,10 @@
             <h1 id="pageTitle">Dashboard</h1>
           </div>
           <div class="top-actions">
+            <div class="user-chip">
+              <span id="userEmail">-</span>
+              <button class="ghost" id="logoutBtn">Sair</button>
+            </div>
             <label class="date-filter">
               Data
               <input type="date" id="globalDate" />
