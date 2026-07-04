@@ -960,6 +960,20 @@ function setAuthStatus(message, tone = "") {
   el.className = `sync-status ${tone}`;
 }
 
+function friendlyAuthError(error, fallback) {
+  const message = String(error?.message || fallback || "erro de autenticação");
+  if (message.toLowerCase().includes("email rate limit")) {
+    return "Limite de emails atingido. Tente novamente em alguns minutos ou fale com o administrador do DG Club.";
+  }
+  if (message.toLowerCase().includes("email not confirmed")) {
+    return "Email ainda não confirmado. Verifique a caixa de entrada ou peça liberação ao administrador.";
+  }
+  if (message.toLowerCase().includes("invalid login credentials")) {
+    return "Email ou senha incorretos.";
+  }
+  return message;
+}
+
 function showAuthScreen(show) {
   $("#authScreen").hidden = !show;
   $("#appShell").hidden = show;
@@ -1010,7 +1024,7 @@ async function signIn(event) {
       await enterAuthenticatedApp(data.user);
     }
   } catch (error) {
-    setAuthStatus(error.message || "erro ao entrar", "red");
+    setAuthStatus(friendlyAuthError(error, "erro ao entrar"), "red");
   }
 }
 
@@ -1038,7 +1052,7 @@ async function createAccount() {
       setAuthStatus("conta criada. Confirme o email para entrar.", "amber");
     }
   } catch (error) {
-    setAuthStatus(error.message || "erro ao criar conta", "red");
+    setAuthStatus(friendlyAuthError(error, "erro ao criar conta"), "red");
   }
 }
 
@@ -1054,7 +1068,7 @@ async function resetPassword() {
     if (error) throw error;
     setAuthStatus("email de recuperação enviado", "green");
   } catch (error) {
-    setAuthStatus(error.message || "erro ao recuperar senha", "red");
+    setAuthStatus(friendlyAuthError(error, "erro ao recuperar senha"), "red");
   }
 }
 
