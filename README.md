@@ -29,7 +29,7 @@ http://127.0.0.1:8787
 
 1. Crie um projeto no Supabase.
 2. Rode o SQL de `supabase/schema.sql` no SQL Editor.
-3. Em `Authentication > URL Configuration`, use `https://movidafit.site` como Site URL.
+3. Em `Authentication > URL Configuration`, use `https://dgclub.digital` como Site URL.
 4. O app já está configurado com o projeto `maenndpjseglihhmvils`.
 5. Cada usuário cria login próprio e fica com um snapshot separado por `auth.uid()`.
 6. Use `Salvar agora na nuvem` para salvar o snapshot atual.
