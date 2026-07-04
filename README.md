@@ -1,4 +1,4 @@
-# Duplo Green Tracker
+# DG Club
 
 App local para controlar apostas da estratégia de finalizações com Substituição+.
 
@@ -21,7 +21,7 @@ http://127.0.0.1:8787
 - Em apostas abertas, use `Cashout atual Over/Under` para monitorar quanto a Bet365 está pagando se encerrar agora.
 - Ao fechar, marque o resultado como `Ganhou`, `Perdeu`, `Cashout` ou `Anulada` e preencha `Retorno/Cash` quando for cashout.
 - A aba `Saldo do Dia` controla banca inicial/final e concilia o resultado do dia.
-- A `Dashboard` mostra lucro fechado, dinheiro em jogo, P/L se cashar agora, ROI, reds, cashouts, duplos greens, gráfico diário e exposição por conta.
+- A `Dashboard` mostra lucro fechado, dinheiro em jogo, P/L se cashar agora, ROI, reds, cashouts, DG Club, gráfico diário e exposição por conta.
 - A tela de login usa Supabase Auth.
 - A aba `Config` tem backup JSON e sincronização por conta no Supabase.
 

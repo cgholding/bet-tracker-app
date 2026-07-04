@@ -1,5 +1,6 @@
 const STORAGE_KEY = "dg-tracker-state-v1";
 const USER_SNAPSHOTS_TABLE = "dg_tracker_user_snapshots";
+const DOUBLE_GREEN_LABEL = "DG Club";
 
 const DEFAULT_STATE = {
   activeView: "dashboard",
@@ -186,7 +187,7 @@ function computeBet(bet) {
   let status = "Aberta";
   if (!isOpen) {
     if (overResult === "Anulada" && underResult === "Anulada") status = "Anulada";
-    else if (overResult === "Ganhou" && underResult === "Ganhou") status = "Duplo Green";
+    else if (overResult === "Ganhou" && underResult === "Ganhou") status = DOUBLE_GREEN_LABEL;
     else if (overResult === "Cashout" && underResult === "Ganhou") status = "Cashout + Under";
     else if (overResult === "Ganhou" && underResult === "Cashout") status = "Cashout + Over";
     else if (overResult === "Cashout") status = "Cashout";
@@ -244,14 +245,14 @@ function totalsForDate(date) {
     liveCashoutProfit: openWithCashout.reduce((sum, b) => sum + (computeBet(b).cashoutProfitNow || 0), 0),
     openWithCashout: openWithCashout.length,
     entries: bets.length,
-    doubleGreens: bets.filter((b) => computeBet(b).status === "Duplo Green").length,
+    doubleGreens: bets.filter((b) => computeBet(b).status === DOUBLE_GREEN_LABEL).length,
     cashouts: bets.filter((b) => computeBet(b).status.includes("Cashout")).length,
     reds: closed.filter((b) => (computeBet(b).profit || 0) < 0).length,
   };
 }
 
 function classForStatus(status) {
-  if (status === "Duplo Green" || status === "Lucro") return "green";
+  if (status === DOUBLE_GREEN_LABEL || status === "Lucro") return "green";
   if (status.includes("Cashout")) return "blue";
   if (status === "Red") return "red";
   if (status === "Aberta") return "amber";
@@ -293,7 +294,7 @@ function renderDashboard() {
   const stake = closed.reduce((sum, b) => sum + computeBet(b).stakeTotal, 0);
   const profit = closed.reduce((sum, b) => sum + (computeBet(b).profit || 0), 0);
   const roi = stake ? profit / stake : 0;
-  const doubleGreens = bets.filter((b) => computeBet(b).status === "Duplo Green").length;
+  const doubleGreens = bets.filter((b) => computeBet(b).status === DOUBLE_GREEN_LABEL).length;
   const cashouts = bets.filter((b) => computeBet(b).status.includes("Cashout")).length;
   const reds = closed.filter((b) => (computeBet(b).profit || 0) < 0).length;
   const openBets = bets.filter((b) => computeBet(b).isOpen);
@@ -313,7 +314,7 @@ function renderDashboard() {
       ${kpi("Cashout atual", cashoutKnown.length ? money(liveCashout) : "-", "Retorno se encerrar abertas", "blue")}
       ${kpi("ROI", pct(roi), "Lucro / stake fechado", "amber")}
       ${kpi("Entradas", bets.length, `${open} em aberto`, "")}
-      ${kpi("Duplo Green", doubleGreens, "Over + under verdes", "green")}
+      ${kpi("DG Club", doubleGreens, "Over + under verdes", "green")}
       ${kpi("Cashouts", cashouts, "Cash ou cash + under", "blue")}
       ${kpi("Reds", reds, "Entradas negativas", "red")}
     </div>
@@ -464,7 +465,7 @@ function renderDailyChart() {
 }
 
 function renderResultBars(bets) {
-  const labels = ["Duplo Green", "Cashout + Under", "Cashout + Over", "Cashout", "Só Under", "Só Over", "Red", "Aberta"];
+  const labels = [DOUBLE_GREEN_LABEL, "Cashout + Under", "Cashout + Over", "Cashout", "Só Under", "Só Over", "Red", "Aberta"];
   const counts = labels.map((label) => ({
     label,
     count: bets.filter((b) => computeBet(b).status === label).length,
@@ -596,7 +597,7 @@ function renderBets() {
           <select id="statusFilter">
             <option value="">Todos</option>
             <option>Aberta</option>
-            <option>Duplo Green</option>
+            <option>${DOUBLE_GREEN_LABEL}</option>
             <option>Cashout + Under</option>
             <option>Cashout + Over</option>
             <option>Cashout</option>
