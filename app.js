@@ -14,8 +14,50 @@ const DEFAULT_STATE = {
     supabaseTable: USER_SNAPSHOTS_TABLE,
     supabaseSyncId: "",
   },
+  calculator: {
+    oddOver: "",
+    oddUnder: "",
+    stakeTotal: "",
+    stakeOver: "",
+    stakeUnder: "",
+    protectionMode: "none",
+    anchor: "total",
+  },
   bets: [],
   balances: [],
+};
+
+const VALID_VIEWS = ["dashboard", "calculator", "bets", "balances", "config"];
+
+const PAGE_TITLES = {
+  dashboard: "Dashboard",
+  calculator: "Calculadora",
+  bets: "Apostas",
+  balances: "Saldo do Dia",
+  config: "Config",
+};
+
+const PROTECTION_MODES = {
+  none: {
+    label: "Sem proteção",
+    shift: 0,
+    hint: "Divide para deixar o prejuízo parecido se bater só um lado.",
+  },
+  light: {
+    label: "Proteção leve",
+    shift: 0.05,
+    hint: "Move 5% do total do Under para o Over S+.",
+  },
+  medium: {
+    label: "Proteção média",
+    shift: 0.1,
+    hint: "Move 10% do total do Under para o Over S+.",
+  },
+  high: {
+    label: "Proteção alta",
+    shift: 0.15,
+    hint: "Move 15% do total do Under para o Over S+.",
+  },
 };
 
 let state = loadState();
@@ -88,6 +130,10 @@ function normalizeState(input = {}) {
     ...base,
     ...input,
     settings,
+    calculator: {
+      ...base.calculator,
+      ...(input.calculator || {}),
+    },
     bets: Array.isArray(input.bets) ? input.bets : [],
     balances: Array.isArray(input.balances) ? input.balances : [],
   };
@@ -115,6 +161,11 @@ function uid() {
 function num(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function round2(value) {
+  const n = num(value);
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 function money(value) {
@@ -259,21 +310,107 @@ function classForStatus(status) {
   return "";
 }
 
+function calculateStrategy(rawInput = {}) {
+  const oddOver = num(rawInput.oddOver);
+  const oddUnder = num(rawInput.oddUnder);
+  const modeKey = rawInput.protectionMode || "none";
+  const mode = PROTECTION_MODES[modeKey] || PROTECTION_MODES.none;
+  const anchor = rawInput.anchor || "total";
+  const stakeTotalInput = num(rawInput.stakeTotal);
+  const stakeOverInput = num(rawInput.stakeOver);
+  const stakeUnderInput = num(rawInput.stakeUnder);
+
+  if (oddOver <= 1 || oddUnder <= 1) {
+    return {
+      valid: false,
+      message: "Preencha odds maiores que 1.00 para calcular.",
+    };
+  }
+
+  const denominator = oddOver + oddUnder;
+  const baseOverCoef = oddUnder / denominator;
+  const baseUnderCoef = oddOver / denominator;
+  let overCoef = baseOverCoef + mode.shift;
+  let underCoef = baseUnderCoef - mode.shift;
+  let cappedProtection = false;
+
+  if (underCoef < 0) {
+    cappedProtection = true;
+    underCoef = 0;
+    overCoef = 1;
+  }
+
+  let stakeTotal = stakeTotalInput;
+  let stakeOver = 0;
+  let stakeUnder = 0;
+
+  if (anchor === "over" && stakeOverInput > 0) {
+    stakeOver = round2(stakeOverInput);
+    stakeTotal = overCoef > 0 ? round2(stakeOver / overCoef) : stakeOver;
+    stakeUnder = round2(Math.max(0, stakeTotal - stakeOver));
+  } else if (anchor === "under" && stakeUnderInput > 0) {
+    if (underCoef <= 0) {
+      return {
+        valid: false,
+        message: "Essa proteção zeraria o Under. Reduza a proteção ou calcule pelo total/Over.",
+      };
+    }
+    stakeUnder = round2(stakeUnderInput);
+    stakeTotal = round2(stakeUnder / underCoef);
+    stakeOver = round2(Math.max(0, stakeTotal - stakeUnder));
+  } else if (stakeTotal > 0) {
+    stakeTotal = round2(stakeTotal);
+    stakeOver = round2(Math.min(stakeTotal, stakeTotal * overCoef));
+    stakeUnder = round2(Math.max(0, stakeTotal - stakeOver));
+  } else {
+    return {
+      valid: false,
+      message: "Informe o investimento total ou trave uma stake de Over/Under.",
+    };
+  }
+
+  const retornoOver = round2(stakeOver * oddOver);
+  const retornoUnder = round2(stakeUnder * oddUnder);
+  const lucroSoOver = round2(retornoOver - stakeTotal);
+  const lucroSoUnder = round2(retornoUnder - stakeTotal);
+  const lucroDuplo = round2(retornoOver + retornoUnder - stakeTotal);
+  const piorCenario = Math.min(lucroSoOver, lucroSoUnder, 0);
+  const taxaMinimaDG = lucroDuplo + Math.abs(piorCenario) > 0
+    ? Math.abs(piorCenario) / (lucroDuplo + Math.abs(piorCenario))
+    : 0;
+
+  return {
+    valid: true,
+    modeKey,
+    mode,
+    anchor,
+    oddOver,
+    oddUnder,
+    stakeTotal,
+    stakeOver,
+    stakeUnder,
+    deslocamento: round2(stakeTotal * mode.shift),
+    retornoOver,
+    retornoUnder,
+    lucroSoOver,
+    lucroSoUnder,
+    lucroDuplo,
+    piorCenario,
+    taxaMinimaDG,
+    cappedProtection,
+  };
+}
+
 function activateView(view) {
-  const safeView = ["dashboard", "bets", "balances", "config"].includes(view) ? view : "dashboard";
+  const safeView = VALID_VIEWS.includes(view) ? view : "dashboard";
   $$(".nav-item").forEach((btn) => btn.classList.toggle("active", btn.dataset.view === safeView));
   $$(".view").forEach((el) => el.classList.remove("active"));
   $(`#view-${safeView}`).classList.add("active");
-  $("#pageTitle").textContent = {
-    dashboard: "Dashboard",
-    bets: "Apostas",
-    balances: "Saldo do Dia",
-    config: "Config",
-  }[safeView];
+  $("#pageTitle").textContent = PAGE_TITLES[safeView];
 }
 
 function setView(view) {
-  state.activeView = ["dashboard", "bets", "balances", "config"].includes(view) ? view : "dashboard";
+  state.activeView = VALID_VIEWS.includes(view) ? view : "dashboard";
   saveState();
   activateView(state.activeView);
   render();
@@ -282,6 +419,7 @@ function setView(view) {
 function render() {
   $("#globalDate").value = state.selectedDate || "";
   renderDashboard();
+  renderCalculator();
   renderBets();
   renderBalances();
   renderConfig();
@@ -386,6 +524,186 @@ function renderDashboard() {
   `;
 
   root.querySelector('[data-action="go-bets"]')?.addEventListener("click", () => setView("bets"));
+}
+
+function renderCalculator() {
+  const root = $("#view-calculator");
+  if (!root) return;
+
+  const calc = {
+    ...DEFAULT_STATE.calculator,
+    ...(state.calculator || {}),
+  };
+  const result = calculateStrategy(calc);
+  const display = result.valid ? result : null;
+
+  root.innerHTML = `
+    <div class="calculator-layout">
+      <div class="card panel calculator-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Calculadora de dutching</h2>
+            <p class="panel-subtitle">Over S+ e under na mesma linha, com ajuste manual por limite.</p>
+          </div>
+        </div>
+
+        <div class="calc-mode-tabs" role="group" aria-label="Modo de proteção">
+          ${Object.entries(PROTECTION_MODES).map(([key, mode]) => `
+            <button type="button" class="calc-mode ${calc.protectionMode === key ? "active" : ""}" data-calc-mode="${key}">
+              <strong>${mode.label}</strong>
+              <span>${mode.shift ? `${Math.round(mode.shift * 100)}% para o Over` : "Base normal"}</span>
+            </button>
+          `).join("")}
+        </div>
+
+        <div class="calc-input-grid">
+          <label>Odd Over<input id="calcOddOver" data-calc-input data-calc-anchor="odds" type="number" step="0.01" placeholder="2.10" value="${escapeHtml(calc.oddOver)}" /></label>
+          <label>Odd Under<input id="calcOddUnder" data-calc-input data-calc-anchor="odds" type="number" step="0.01" placeholder="1.66" value="${escapeHtml(calc.oddUnder)}" /></label>
+          <label class="calc-total">Investimento total<input id="calcStakeTotal" data-calc-input data-calc-anchor="total" type="number" step="0.01" placeholder="1500" value="${display ? display.stakeTotal.toFixed(2) : escapeHtml(calc.stakeTotal)}" /></label>
+          <label>Stake Over<input id="calcStakeOver" data-calc-input data-calc-anchor="over" type="number" step="0.01" placeholder="0" value="${display ? display.stakeOver.toFixed(2) : escapeHtml(calc.stakeOver)}" /></label>
+          <label>Stake Under<input id="calcStakeUnder" data-calc-input data-calc-anchor="under" type="number" step="0.01" placeholder="0" value="${display ? display.stakeUnder.toFixed(2) : escapeHtml(calc.stakeUnder)}" /></label>
+        </div>
+
+        <div class="calc-helper" id="calcHelper">
+          ${renderCalculatorHelper(result)}
+        </div>
+
+        <div class="calc-actions">
+          <button type="button" class="ghost" id="calcReset">Limpar</button>
+          <button type="button" class="primary" id="calcUseOnBet" ${result.valid ? "" : "disabled"}>Usar em nova aposta</button>
+        </div>
+      </div>
+
+      <div class="card panel calculator-result-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Cenários</h2>
+            <p class="panel-subtitle">Retornos e prejuízos calculados pela stake atual.</p>
+          </div>
+        </div>
+        <div id="calculatorResults">
+          ${renderCalculatorResult(result)}
+        </div>
+      </div>
+    </div>
+  `;
+
+  bindCalculatorEvents(root);
+}
+
+function renderCalculatorHelper(result) {
+  if (!result.valid) return `<span>${result.message}</span>`;
+  const anchorLabel = {
+    total: "total fixo",
+    over: "Over fixo",
+    under: "Under fixo",
+  }[result.anchor] || "total fixo";
+  const protectionText = result.mode.shift
+    ? `${result.mode.label}: ${money(result.deslocamento)} deslocados do Under para o Over.`
+    : "Sem deslocamento de proteção.";
+  return `
+    <span>Base: ${anchorLabel}</span>
+    <span>${protectionText}</span>
+  `;
+}
+
+function renderCalculatorResult(result) {
+  if (!result.valid) {
+    return `<div class="empty-state calc-empty"><div><strong>Pronto para calcular</strong><p>${result.message}</p></div></div>`;
+  }
+
+  return `
+    <div class="calc-results-grid">
+      ${mini("Stake Over", money(result.stakeOver))}
+      ${mini("Stake Under", money(result.stakeUnder))}
+      ${mini("Retorno Over", money(result.retornoOver))}
+      ${mini("Retorno Under", money(result.retornoUnder))}
+      ${mini("Só Over", `<span class="${result.lucroSoOver >= 0 ? "good" : "bad"}">${money(result.lucroSoOver)}</span>`)}
+      ${mini("Só Under", `<span class="${result.lucroSoUnder >= 0 ? "good" : "bad"}">${money(result.lucroSoUnder)}</span>`)}
+      ${mini("Duplo green", `<span class="${result.lucroDuplo >= 0 ? "good" : "bad"}">${money(result.lucroDuplo)}</span>`)}
+      ${mini("DG mínimo", pct(result.taxaMinimaDG))}
+    </div>
+    <div class="calc-warning ${result.mode.shift ? "amber" : ""}">
+      ${result.mode.shift
+        ? "Proteção aumenta exposição no Over e piora o cenário em que só o Under bate. Use só com jogador que tem risco real de estourar e forte histórico de substituição cedo."
+        : "Sem proteção: os dois reds laterais ficam o mais equilibrados possível pelas odds informadas."}
+      ${result.cappedProtection ? "<strong> A proteção foi limitada porque zeraria o Under.</strong>" : ""}
+    </div>
+  `;
+}
+
+function bindCalculatorEvents(root) {
+  root.querySelectorAll("[data-calc-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.calculator.protectionMode = button.dataset.calcMode;
+      saveState();
+      renderCalculator();
+    });
+  });
+
+  root.querySelectorAll("[data-calc-input]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const requestedAnchor = input.dataset.calcAnchor === "odds"
+        ? (state.calculator.anchor || "total")
+        : input.dataset.calcAnchor;
+      syncCalculator(requestedAnchor);
+    });
+  });
+
+  root.querySelector("#calcReset")?.addEventListener("click", () => {
+    state.calculator = { ...DEFAULT_STATE.calculator };
+    saveState();
+    renderCalculator();
+  });
+
+  root.querySelector("#calcUseOnBet")?.addEventListener("click", () => {
+    const result = calculateStrategy(state.calculator);
+    if (!result.valid) return;
+    fillBetFromCalculator(result);
+  });
+}
+
+function syncCalculator(anchor = "total") {
+  const calc = {
+    ...state.calculator,
+    oddOver: $("#calcOddOver")?.value || "",
+    oddUnder: $("#calcOddUnder")?.value || "",
+    stakeTotal: $("#calcStakeTotal")?.value || "",
+    stakeOver: $("#calcStakeOver")?.value || "",
+    stakeUnder: $("#calcStakeUnder")?.value || "",
+    anchor,
+  };
+  const result = calculateStrategy(calc);
+
+  if (result.valid) {
+    if (anchor !== "total") $("#calcStakeTotal").value = result.stakeTotal.toFixed(2);
+    if (anchor !== "over") $("#calcStakeOver").value = result.stakeOver.toFixed(2);
+    if (anchor !== "under") $("#calcStakeUnder").value = result.stakeUnder.toFixed(2);
+    state.calculator = {
+      ...calc,
+      stakeTotal: $("#calcStakeTotal").value,
+      stakeOver: $("#calcStakeOver").value,
+      stakeUnder: $("#calcStakeUnder").value,
+    };
+  } else {
+    state.calculator = calc;
+  }
+
+  $("#calcHelper").innerHTML = renderCalculatorHelper(result);
+  $("#calculatorResults").innerHTML = renderCalculatorResult(result);
+  $("#calcUseOnBet").disabled = !result.valid;
+  saveState();
+}
+
+function fillBetFromCalculator(result) {
+  openBetDrawer();
+  $("#betOddOver").value = result.oddOver.toFixed(2);
+  $("#betOddUnder").value = result.oddUnder.toFixed(2);
+  $("#betProtectionMode").value = result.modeKey;
+  $("#betTotalStake").value = result.stakeTotal.toFixed(2);
+  $("#betStakeOver").value = result.stakeOver.toFixed(2);
+  $("#betStakeUnder").value = result.stakeUnder.toFixed(2);
+  updateBetPreview();
 }
 
 function kpi(label, value, hint, tone) {
@@ -666,7 +984,7 @@ function renderBetCard(b) {
         ${mini("DG Potencial", money(c.doubleProfit))}
         ${mini("Prob. Min.", pct(c.minDoubleRate))}
       </div>
-      <div class="meta">Over ${b.oddOver || "-"} / Under ${b.oddUnder || "-"} · ${b.resultOver || "Aberta"} / ${b.resultUnder || "Aberta"}</div>
+      <div class="meta">Over ${b.oddOver || "-"} / Under ${b.oddUnder || "-"} · ${PROTECTION_MODES[b.protectionMode || "none"]?.label || "Sem proteção"} · ${b.resultOver || "Aberta"} / ${b.resultUnder || "Aberta"}</div>
       <div class="bet-actions">
         <button class="ghost" data-edit="${b.id}">Editar</button>
       </div>
@@ -1103,6 +1421,9 @@ function openBetDrawer(id) {
   $("#betAccountUnder").value = bet?.accountUnder || state.settings.accountB;
   $("#betOddOver").value = bet?.oddOver || "";
   $("#betOddUnder").value = bet?.oddUnder || "";
+  $("#betProtectionMode").value = bet?.protectionMode || "none";
+  const stakeTotal = num(bet?.stakeOver) + num(bet?.stakeUnder);
+  $("#betTotalStake").value = stakeTotal > 0 ? stakeTotal.toFixed(2) : "";
   $("#betStakeOver").value = bet?.stakeOver || "";
   $("#betStakeUnder").value = bet?.stakeUnder || "";
   $("#betResultOver").value = bet?.resultOver || "Aberta";
@@ -1117,6 +1438,8 @@ function openBetDrawer(id) {
   $("#betSubShots").value = bet?.subShots || "";
   $("#betNotes").value = bet?.notes || "";
   $("#deleteBet").style.visibility = bet ? "visible" : "hidden";
+  syncStakeSplit();
+  updateResultFields();
   updateBetPreview();
   $("#betDrawer").classList.add("open");
   $("#drawerBackdrop").classList.add("open");
@@ -1129,7 +1452,36 @@ function closeBetDrawer() {
   $("#betDrawer").setAttribute("aria-hidden", "true");
 }
 
+function syncStakeSplit() {
+  const totalInput = $("#betTotalStake");
+  if (!totalInput) return;
+  const total = num(totalInput.value);
+  const oddOver = num($("#betOddOver").value);
+  const oddUnder = num($("#betOddUnder").value);
+  const protectionMode = $("#betProtectionMode")?.value || "none";
+  const calc = calculateStrategy({
+    oddOver,
+    oddUnder,
+    stakeTotal: total,
+    protectionMode,
+    anchor: "total",
+  });
+  if (!calc.valid) return;
+  $("#betStakeOver").value = calc.stakeOver.toFixed(2);
+  $("#betStakeUnder").value = calc.stakeUnder.toFixed(2);
+}
+
+function updateResultFields() {
+  const overCash = $("#betResultOver")?.value === "Cashout";
+  const underCash = $("#betResultUnder")?.value === "Cashout";
+  const overField = $("#cashoutOverField");
+  const underField = $("#cashoutUnderField");
+  if (overField) overField.hidden = !overCash;
+  if (underField) underField.hidden = !underCash;
+}
+
 function betFromForm() {
+  syncStakeSplit();
   return {
     id: $("#betId").value || uid(),
     createdAt: $("#betId").value ? (state.bets.find((b) => b.id === $("#betId").value)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
@@ -1141,6 +1493,7 @@ function betFromForm() {
     line: $("#betLine").value,
     market: $("#betMarket").value,
     type: $("#betType").value,
+    protectionMode: $("#betProtectionMode").value,
     accountOver: $("#betAccountOver").value,
     accountUnder: $("#betAccountUnder").value,
     oddOver: $("#betOddOver").value,
@@ -1162,6 +1515,8 @@ function betFromForm() {
 }
 
 function updateBetPreview() {
+  syncStakeSplit();
+  updateResultFields();
   const bet = betFromForm();
   const c = computeBet(bet);
   $("#betPreview").innerHTML = `

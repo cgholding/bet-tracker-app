@@ -291,6 +291,12 @@ textarea:focus {
   background: #1f2937;
 }
 
+.primary:disabled,
+.ghost:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .ghost {
   background: #fff;
   color: var(--navy);
@@ -609,7 +615,8 @@ textarea:focus {
 }
 
 .balance-form label,
-.form-grid label,
+.bet-form label,
+.field-grid label,
 .config-grid label {
   display: grid;
   gap: 6px;
@@ -619,8 +626,93 @@ textarea:focus {
 }
 
 .balance-form .wide,
-.form-grid .wide {
+.field-grid .wide {
   grid-column: 1 / -1;
+}
+
+.bet-form {
+  overflow-y: auto;
+  padding: 16px 18px 112px;
+  display: grid;
+  gap: 12px;
+}
+
+.form-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 13px;
+  background: #fff;
+}
+
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.section-title span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.total-stake-field {
+  margin-bottom: 12px;
+}
+
+.bet-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.side-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.side-box strong {
+  font-size: 14px;
+}
+
+.fold-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.fold-section summary {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  padding: 0 13px;
+  color: var(--navy);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.fold-section[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.fold-section .field-grid {
+  padding: 13px;
+}
+
+.live-cashout-field {
+  opacity: 0.78;
 }
 
 .config-grid {
@@ -688,16 +780,7 @@ textarea:focus {
   border-color: var(--line);
 }
 
-.form-grid {
-  overflow-y: auto;
-  padding: 18px 20px 24px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
 .drawer-preview {
-  grid-column: 1 / -1;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
@@ -705,11 +788,15 @@ textarea:focus {
 }
 
 .drawer-actions {
-  grid-column: 1 / -1;
+  position: sticky;
+  bottom: 0;
+  margin: 0 -18px -112px;
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding-top: 8px;
 }
 
 .drawer-actions button {
@@ -784,6 +871,131 @@ textarea:focus {
   height: auto;
 }
 
+.calculator-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.calculator-panel,
+.calculator-result-panel {
+  min-width: 0;
+}
+
+.calc-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.calc-mode {
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  text-align: left;
+}
+
+.calc-mode strong,
+.calc-mode span {
+  display: block;
+}
+
+.calc-mode strong {
+  color: var(--navy);
+  font-size: 13px;
+}
+
+.calc-mode span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.calc-mode.active {
+  border-color: var(--blue);
+  background: var(--soft-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.calc-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.calc-input-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.calc-total {
+  grid-column: 1 / -1;
+}
+
+.calc-helper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.calc-helper span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.calc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.calc-results-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.calc-warning {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 750;
+}
+
+.calc-warning.amber {
+  border-color: #fde68a;
+  background: var(--soft-amber);
+  color: #92400e;
+}
+
+.calc-empty {
+  min-height: 220px;
+}
+
+.total-row {
+  margin-bottom: 12px;
+}
+
 @media (max-width: 1180px) {
   .bets-grid,
   .kpi-grid {
@@ -791,7 +1003,8 @@ textarea:focus {
   }
 
   .section-grid,
-  .config-grid {
+  .config-grid,
+  .calculator-layout {
     grid-template-columns: 1fr;
   }
 
@@ -801,6 +1014,16 @@ textarea:focus {
 }
 
 @media (max-width: 780px) {
+  .auth-screen {
+    padding: 14px;
+    place-items: start center;
+  }
+
+  .auth-card {
+    margin-top: 18px;
+    padding: 18px;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -808,17 +1031,28 @@ textarea:focus {
   .sidebar {
     position: static;
     height: auto;
-    padding: 16px;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brand span {
+    font-size: 12px;
   }
 
   .nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .nav-item {
     text-align: center;
-    padding: 10px 6px;
-    font-size: 13px;
+    padding: 9px 4px;
+    font-size: 12px;
   }
 
   .sidebar-note {
@@ -826,7 +1060,7 @@ textarea:focus {
   }
 
   .main {
-    padding: 16px;
+    padding: 12px;
   }
 
   .topbar,
@@ -838,14 +1072,94 @@ textarea:focus {
     flex-direction: column;
   }
 
+  h1 {
+    font-size: 23px;
+  }
+
+  h2 {
+    font-size: 18px;
+  }
+
   .kpi-grid,
   .bets-grid,
-  .balance-form,
-  .form-grid {
+  .calc-mode-tabs,
+  .calc-input-grid,
+  .calc-results-grid,
+  .balance-form {
     grid-template-columns: 1fr;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .kpi {
+    min-height: 92px;
+    padding: 12px;
+  }
+
+  .kpi .value {
+    margin-top: 10px;
+    font-size: 20px;
+  }
+
+  .mini-grid,
+  .field-grid,
+  .bet-sides {
+    grid-template-columns: 1fr;
+  }
+
+  .calc-mode-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .calc-mode {
+    min-height: 64px;
+  }
+
+  .calc-actions {
+    flex-direction: column-reverse;
+  }
+
+  .section-title {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .section-title span {
+    text-align: left;
   }
 
   .balance-card {
     grid-template-columns: 1fr;
+  }
+
+  .drawer {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+  }
+
+  .drawer-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 14px;
+    background: #fff;
+  }
+
+  .bet-form {
+    padding: 12px 12px 102px;
+  }
+
+  .drawer-actions {
+    margin: 0 -12px -102px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .drawer-actions button {
+    min-width: 0;
+    flex: 1;
   }
 }
