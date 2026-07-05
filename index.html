@@ -113,6 +113,35 @@
           </div>
         </section>
 
+        <section class="form-section result-section">
+          <div class="section-title">
+            <h3>Resultado e cashout</h3>
+            <span>Marque o que aconteceu em cada lado.</span>
+          </div>
+          <div class="field-grid">
+            <label>Resultado Over
+              <select id="betResultOver">
+                <option>Aberta</option>
+                <option>Ganhou</option>
+                <option>Perdeu</option>
+                <option>Cashout</option>
+                <option>Anulada</option>
+              </select>
+            </label>
+            <label>Resultado Under
+              <select id="betResultUnder">
+                <option>Aberta</option>
+                <option>Ganhou</option>
+                <option>Perdeu</option>
+                <option>Cashout</option>
+                <option>Anulada</option>
+              </select>
+            </label>
+            <label id="cashoutOverField" hidden>Valor do cash Over<input id="betCashoutOver" type="number" step="0.01" placeholder="0" /></label>
+            <label id="cashoutUnderField" hidden>Valor do cash Under<input id="betCashoutUnder" type="number" step="0.01" placeholder="0" /></label>
+          </div>
+        </section>
+
         <section class="form-section">
           <div class="section-title">
             <h3>Odds e valores</h3>
@@ -144,32 +173,6 @@
         </section>
 
         <div class="drawer-preview" id="betPreview"></div>
-
-        <details class="form-section fold-section">
-          <summary>Resultado e cashout</summary>
-          <div class="field-grid">
-            <label>Resultado Over
-              <select id="betResultOver">
-                <option>Aberta</option>
-                <option>Ganhou</option>
-                <option>Perdeu</option>
-                <option>Cashout</option>
-                <option>Anulada</option>
-              </select>
-            </label>
-            <label>Resultado Under
-              <select id="betResultUnder">
-                <option>Aberta</option>
-                <option>Ganhou</option>
-                <option>Perdeu</option>
-                <option>Cashout</option>
-                <option>Anulada</option>
-              </select>
-            </label>
-            <label id="cashoutOverField" hidden>Valor do cash Over<input id="betCashoutOver" type="number" step="0.01" placeholder="0" /></label>
-            <label id="cashoutUnderField" hidden>Valor do cash Under<input id="betCashoutUnder" type="number" step="0.01" placeholder="0" /></label>
-          </div>
-        </details>
 
         <details class="form-section fold-section">
           <summary>Detalhes avançados</summary>

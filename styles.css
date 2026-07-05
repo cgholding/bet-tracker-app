@@ -644,6 +644,11 @@ textarea:focus {
   background: #fff;
 }
 
+.result-section {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
 .section-title {
   display: flex;
   justify-content: space-between;
@@ -790,7 +795,7 @@ textarea:focus {
 .drawer-actions {
   position: sticky;
   bottom: 0;
-  margin: 0 -18px -112px;
+  margin: 0 -18px;
   padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.96);
   border-top: 1px solid var(--line);
@@ -1154,7 +1159,7 @@ textarea:focus {
   }
 
   .drawer-actions {
-    margin: 0 -12px -102px;
+    margin: 0 -12px;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   }
 
