@@ -975,6 +975,14 @@ textarea:focus {
   gap: 9px;
 }
 
+.calc-percent {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .calc-warning {
   margin-top: 12px;
   border: 1px solid var(--line);

@@ -375,6 +375,12 @@ function calculateStrategy(rawInput = {}) {
   const lucroSoUnder = round2(retornoUnder - stakeTotal);
   const lucroDuplo = round2(retornoOver + retornoUnder - stakeTotal);
   const piorCenario = Math.min(lucroSoOver, lucroSoUnder, 0);
+  const perdaSoOver = round2(Math.max(0, -lucroSoOver));
+  const perdaSoUnder = round2(Math.max(0, -lucroSoUnder));
+  const piorPerda = round2(Math.max(perdaSoOver, perdaSoUnder));
+  const perdaSoOverPct = stakeTotal > 0 ? perdaSoOver / stakeTotal : 0;
+  const perdaSoUnderPct = stakeTotal > 0 ? perdaSoUnder / stakeTotal : 0;
+  const piorPerdaPct = stakeTotal > 0 ? piorPerda / stakeTotal : 0;
   const taxaMinimaDG = lucroDuplo + Math.abs(piorCenario) > 0
     ? Math.abs(piorCenario) / (lucroDuplo + Math.abs(piorCenario))
     : 0;
@@ -396,6 +402,12 @@ function calculateStrategy(rawInput = {}) {
     lucroSoUnder,
     lucroDuplo,
     piorCenario,
+    perdaSoOver,
+    perdaSoUnder,
+    piorPerda,
+    perdaSoOverPct,
+    perdaSoUnderPct,
+    piorPerdaPct,
     taxaMinimaDG,
     cappedProtection,
   };
@@ -620,6 +632,9 @@ function renderCalculatorResult(result) {
       ${mini("Retorno Under", money(result.retornoUnder))}
       ${mini("Só Over", `<span class="${result.lucroSoOver >= 0 ? "good" : "bad"}">${money(result.lucroSoOver)}</span>`)}
       ${mini("Só Under", `<span class="${result.lucroSoUnder >= 0 ? "good" : "bad"}">${money(result.lucroSoUnder)}</span>`)}
+      ${mini("Perda só Over", lossValue(result.perdaSoOver, result.perdaSoOverPct))}
+      ${mini("Perda só Under", lossValue(result.perdaSoUnder, result.perdaSoUnderPct))}
+      ${mini("Pior perda", lossValue(result.piorPerda, result.piorPerdaPct))}
       ${mini("Duplo green", `<span class="${result.lucroDuplo >= 0 ? "good" : "bad"}">${money(result.lucroDuplo)}</span>`)}
       ${mini("DG mínimo", pct(result.taxaMinimaDG))}
     </div>
@@ -629,6 +644,14 @@ function renderCalculatorResult(result) {
         : "Sem proteção: os dois reds laterais ficam o mais equilibrados possível pelas odds informadas."}
       ${result.cappedProtection ? "<strong> A proteção foi limitada porque zeraria o Under.</strong>" : ""}
     </div>
+  `;
+}
+
+function lossValue(amount, percent) {
+  const hasLoss = num(amount) > 0;
+  return `
+    <span class="${hasLoss ? "bad" : "good"}">${money(amount)}</span>
+    <small class="calc-percent">${pct(percent)} do total</small>
   `;
 }
 
