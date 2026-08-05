@@ -12,4 +12,6 @@ h2{font-size:clamp(38px,10vw,68px);line-height:.95;letter-spacing:-.06em}.sequen
 .final-cta{padding:76px 0}
 @media(min-width:700px){.section{padding:88px 0}.free-section{padding:64px 0}.final-cta{padding:88px 0}}
 .brand{height:64px}.brand img{top:-46px}.footer-brand{height:80px}.footer-brand img{top:-58px}
+.hero{min-height:0;align-items:flex-start;padding-bottom:24px}.script-section{padding-top:32px}
+@media(min-width:700px){.hero{min-height:620px;align-items:center;padding-top:72px;padding-bottom:48px}.script-section{padding-top:56px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button{transition:none}}
